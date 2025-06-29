@@ -18,50 +18,40 @@ const InlineMermaidDiagram = memo(({ content, className }: InlineMermaidProps) =
   const { theme } = useContext(ThemeContext);
   const isDarkMode = isDark(theme);
 
-  // Create a unique key based on content and theme
   const diagramKey = useMemo(
     () => `${content.trim()}-${isDarkMode ? 'dark' : 'light'}`,
     [content, isDarkMode],
   );
 
-  // Copy functionality
   const handleCopy = useCallback(async () => {
     try {
       await navigator.clipboard.writeText(content);
       setIsCopied(true);
-      setTimeout(() => setIsCopied(false), 2000); // Reset after 2 seconds
+      setTimeout(() => setIsCopied(false), 2000);
     } catch (err) {
       console.error('Failed to copy diagram content:', err);
     }
   }, [content]);
 
-  // Auto-correct common mermaid syntax issues (memoized to prevent re-renders)
+  // Memoized to prevent re-renders when content/theme changes
   const fixCommonSyntaxIssues = useMemo(() => {
     return (text: string) => {
       let fixed = text;
 
-      // Fix spaces in arrows: "-- >" should be "-->"
       fixed = fixed.replace(/--\s+>/g, '-->');
-
-      // Fix spaces in other arrow types
       fixed = fixed.replace(/--\s+\|/g, '--|');
       fixed = fixed.replace(/\|\s+-->/g, '|-->');
-
-      // Fix common quote issues in labels
       fixed = fixed.replace(/\[([^[\]]*)"([^[\]]*)"([^[\]]*)\]/g, '[$1$2$3]');
-
-      // Fix missing spaces after subgraph
       fixed = fixed.replace(/subgraph([A-Za-z])/g, 'subgraph $1');
 
       return fixed;
     };
   }, []);
 
-  // Try to fix and re-render
   const handleTryFix = useCallback(() => {
     const fixedContent = fixCommonSyntaxIssues(content);
     if (fixedContent !== content) {
-      // For now, just copy the fixed version to clipboard
+      // Currently just copies the fixed version to clipboard
       navigator.clipboard.writeText(fixedContent).then(() => {
         setError(`Potential fix copied to clipboard. Common issues found and corrected.`);
       });
@@ -74,7 +64,6 @@ const InlineMermaidDiagram = memo(({ content, className }: InlineMermaidProps) =
   useLayoutEffect(() => {
     let isCancelled = false;
 
-    // Clear any existing timeout
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
       timeoutRef.current = null;
@@ -82,7 +71,6 @@ const InlineMermaidDiagram = memo(({ content, className }: InlineMermaidProps) =
 
     const cleanContent = content.trim();
 
-    // Reset states
     setError(null);
     setWasAutoCorrected(false);
     setIsRendered(false);
@@ -92,18 +80,17 @@ const InlineMermaidDiagram = memo(({ content, className }: InlineMermaidProps) =
       return;
     }
 
-    // Simple debouncing: wait a short moment before rendering to avoid flickering
+    // Debounce rendering to avoid flickering during rapid content changes
     timeoutRef.current = setTimeout(() => {
       if (!isCancelled) {
         renderDiagram();
       }
-    }, 300); // Wait 300ms for content to stabilize
+    }, 300);
 
     async function renderDiagram() {
       if (isCancelled) return;
 
       try {
-        // Basic validation - check if it looks like valid mermaid syntax
         if (
           !cleanContent.match(
             /^(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram|erDiagram|journey|gantt|pie|gitgraph|mindmap|timeline|quadrant|block-beta|sankey|xychart|gitgraph)/i,
@@ -118,17 +105,16 @@ const InlineMermaidDiagram = memo(({ content, className }: InlineMermaidProps) =
           return;
         }
 
-        // Initialize mermaid with complete error suppression
+        // Initialize with error suppression to avoid console spam
         mermaid.initialize({
           startOnLoad: false,
           theme: isDarkMode ? 'dark' : 'default',
           securityLevel: 'loose',
-          logLevel: 'fatal', // Only show fatal errors
+          logLevel: 'fatal',
           flowchart: {
             useMaxWidth: true,
             htmlLabels: true,
           },
-          // Complete error suppression
           suppressErrorRendering: true,
         });
 
@@ -136,22 +122,17 @@ const InlineMermaidDiagram = memo(({ content, className }: InlineMermaidProps) =
         let contentToRender = cleanContent;
 
         try {
-          // Generate unique ID to avoid conflicts
           const id = `mermaid-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-
-          // Try to render original content first
           result = await mermaid.render(id, contentToRender);
         } catch (_renderError) {
-          // If rendering fails, try with auto-corrected syntax
           const fixedContent = fixCommonSyntaxIssues(cleanContent);
           if (fixedContent !== cleanContent) {
             try {
               const fixedId = `mermaid-fixed-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
               result = await mermaid.render(fixedId, fixedContent);
-              contentToRender = fixedContent; // Use the fixed content if it worked
-              setWasAutoCorrected(true); // Mark that auto-correction was used
+              contentToRender = fixedContent;
+              setWasAutoCorrected(true);
             } catch (_fixedRenderError) {
-              // Both original and fixed content failed
               if (!isCancelled) {
                 setError('Invalid diagram syntax - syntax errors found but unable to auto-correct');
                 setWasAutoCorrected(false);
@@ -159,7 +140,6 @@ const InlineMermaidDiagram = memo(({ content, className }: InlineMermaidProps) =
               return;
             }
           } else {
-            // No auto-corrections available and original failed
             if (!isCancelled) {
               setError('Invalid diagram syntax - check arrow formatting and node labels');
               setWasAutoCorrected(false);
@@ -168,16 +148,14 @@ const InlineMermaidDiagram = memo(({ content, className }: InlineMermaidProps) =
           }
         }
 
-        // Check if component was unmounted during render
+        // Check if component was unmounted during async render
         if (isCancelled) {
           return;
         }
 
         if (result && result.svg) {
-          // Use the SVG directly - simpler approach
           let processedSvg = result.svg;
 
-          // Add size constraints and responsive attributes
           processedSvg = processedSvg.replace(
             '<svg',
             '<svg style="max-width: 600px; width: 100%; height: auto; max-height: 400px;" preserveAspectRatio="xMidYMid meet"',
@@ -203,13 +181,11 @@ const InlineMermaidDiagram = memo(({ content, className }: InlineMermaidProps) =
       }
     }
 
-    // Cleanup function
     return () => {
       isCancelled = true;
     };
   }, [diagramKey, content, isDarkMode, fixCommonSyntaxIssues]);
 
-  // Cleanup timeout on unmount
   useLayoutEffect(() => {
     return () => {
       if (timeoutRef.current) {
@@ -297,7 +273,6 @@ const InlineMermaidDiagram = memo(({ content, className }: InlineMermaidProps) =
         className,
       )}
     >
-      {/* Auto-correction indicator */}
       {isRendered && wasAutoCorrected && (
         <div
           className={cn(
@@ -311,7 +286,6 @@ const InlineMermaidDiagram = memo(({ content, className }: InlineMermaidProps) =
         </div>
       )}
 
-      {/* Copy button */}
       {isRendered && svgContent && (
         <button
           onClick={handleCopy}

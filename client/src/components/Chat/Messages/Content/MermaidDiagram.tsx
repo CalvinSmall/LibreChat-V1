@@ -1,5 +1,6 @@
 import React, { useLayoutEffect, useState, memo, useContext, useMemo, useCallback } from 'react';
-import mermaid from 'mermaid';
+import { useTranslation } from 'react-i18next';
+import DOMPurify from 'dompurify';
 import { cn } from '~/utils';
 import { ThemeContext, isDark } from '~/hooks/ThemeContext';
 import { ClipboardIcon, CheckIcon } from 'lucide-react';
@@ -10,11 +11,13 @@ interface InlineMermaidProps {
 }
 
 const InlineMermaidDiagram = memo(({ content, className }: InlineMermaidProps) => {
+  const { t } = useTranslation();
   const [svgContent, setSvgContent] = useState<string>('');
   const [isRendered, setIsRendered] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isCopied, setIsCopied] = useState(false);
   const [wasAutoCorrected, setWasAutoCorrected] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const { theme } = useContext(ThemeContext);
   const isDarkMode = isDark(theme);
 
@@ -53,10 +56,10 @@ const InlineMermaidDiagram = memo(({ content, className }: InlineMermaidProps) =
     if (fixedContent !== content) {
       // Currently just copies the fixed version to clipboard
       navigator.clipboard.writeText(fixedContent).then(() => {
-        setError(`Potential fix copied to clipboard. Common issues found and corrected.`);
+        setError(t('com_mermaid_fix_copied'));
       });
     }
-  }, [content, fixCommonSyntaxIssues]);
+  }, [content, fixCommonSyntaxIssues, t]);
 
   // Use ref to track timeout to prevent stale closures
   const timeoutRef = React.useRef<NodeJS.Timeout | null>(null);
@@ -74,9 +77,10 @@ const InlineMermaidDiagram = memo(({ content, className }: InlineMermaidProps) =
     setError(null);
     setWasAutoCorrected(false);
     setIsRendered(false);
+    setIsLoading(false);
 
     if (!cleanContent) {
-      setError('No diagram content provided');
+      setError(t('com_mermaid_error_no_content'));
       return;
     }
 
@@ -97,11 +101,17 @@ const InlineMermaidDiagram = memo(({ content, className }: InlineMermaidProps) =
           )
         ) {
           if (!isCancelled) {
-            setError(
-              'Invalid Mermaid syntax - diagram must start with a valid diagram type (flowchart, graph, sequenceDiagram, etc.)',
-            );
+            setError(t('com_mermaid_error_invalid_type'));
             setWasAutoCorrected(false);
           }
+          return;
+        }
+
+        // Dynamic import to reduce bundle size
+        setIsLoading(true);
+        const mermaid = await import('mermaid').then((m) => m.default);
+
+        if (isCancelled) {
           return;
         }
 
@@ -134,15 +144,17 @@ const InlineMermaidDiagram = memo(({ content, className }: InlineMermaidProps) =
               setWasAutoCorrected(true);
             } catch (_fixedRenderError) {
               if (!isCancelled) {
-                setError('Invalid diagram syntax - syntax errors found but unable to auto-correct');
+                setError(t('com_mermaid_error_invalid_syntax_auto_correct'));
                 setWasAutoCorrected(false);
+                setIsLoading(false);
               }
               return;
             }
           } else {
             if (!isCancelled) {
-              setError('Invalid diagram syntax - check arrow formatting and node labels');
+              setError(t('com_mermaid_error_invalid_syntax'));
               setWasAutoCorrected(false);
+              setIsLoading(false);
             }
             return;
           }
@@ -161,22 +173,37 @@ const InlineMermaidDiagram = memo(({ content, className }: InlineMermaidProps) =
             '<svg style="max-width: 600px; width: 100%; height: auto; max-height: 400px;" preserveAspectRatio="xMidYMid meet"',
           );
 
+          // Sanitize SVG content to prevent XSS attacks
+          const sanitizedSvg = DOMPurify.sanitize(processedSvg, {
+            USE_PROFILES: { svg: true, svgFilters: true },
+            ADD_TAGS: ['foreignObject'],
+            ADD_ATTR: ['preserveAspectRatio'],
+            FORBID_TAGS: ['script', 'object', 'embed', 'iframe'],
+            FORBID_ATTR: ['onerror', 'onload', 'onclick'],
+          });
+
           if (!isCancelled) {
-            setSvgContent(processedSvg);
+            setSvgContent(sanitizedSvg);
             setIsRendered(true);
+            setIsLoading(false);
           }
         } else {
           if (!isCancelled) {
-            setError('No SVG generated - rendering failed unexpectedly');
+            setError(t('com_mermaid_error_no_svg'));
             setWasAutoCorrected(false);
+            setIsLoading(false);
           }
         }
       } catch (err) {
         console.error('Mermaid rendering error:', err);
         if (!isCancelled) {
-          const errorMessage = err instanceof Error ? err.message : 'Failed to render diagram';
-          setError(`Rendering failed: ${errorMessage}`);
+          const errorMessage =
+            err instanceof Error
+              ? err.message
+              : t('com_mermaid_error_rendering_failed', 'Failed to render diagram');
+          setError(t('com_mermaid_error_rendering_failed', { '0': errorMessage }));
           setWasAutoCorrected(false);
+          setIsLoading(false);
         }
       }
     }
@@ -184,7 +211,7 @@ const InlineMermaidDiagram = memo(({ content, className }: InlineMermaidProps) =
     return () => {
       isCancelled = true;
     };
-  }, [diagramKey, content, isDarkMode, fixCommonSyntaxIssues]);
+  }, [diagramKey, content, isDarkMode, fixCommonSyntaxIssues, t]);
 
   useLayoutEffect(() => {
     return () => {
@@ -210,10 +237,10 @@ const InlineMermaidDiagram = memo(({ content, className }: InlineMermaidProps) =
         <div className="p-4 text-red-600 dark:text-red-400">
           <div className="flex items-start justify-between">
             <div className="flex-1">
-              <strong>{'Mermaid Error:'}</strong> {error}
+              <strong>{t('com_mermaid_error')}</strong> {error}
               {canTryFix && (
                 <div className={cn('mt-2 text-sm text-red-500 dark:text-red-300')}>
-                  {'💡 Potential fixes detected: spacing issues in arrows or labels'}
+                  💡 {t('com_mermaid_error_fixes_detected')}
                 </div>
               )}
             </div>
@@ -226,9 +253,9 @@ const InlineMermaidDiagram = memo(({ content, className }: InlineMermaidProps) =
                     'border-blue-300 bg-blue-100 text-blue-700 hover:bg-blue-200',
                     'dark:border-blue-700 dark:bg-blue-900 dark:text-blue-300 dark:hover:bg-blue-800',
                   )}
-                  title="Copy potential fix to clipboard"
+                  title={t('com_mermaid_copy_potential_fix')}
                 >
-                  {'Try Fix'}
+                  {t('com_mermaid_try_fix')}
                 </button>
               )}
               <button
@@ -238,9 +265,9 @@ const InlineMermaidDiagram = memo(({ content, className }: InlineMermaidProps) =
                   'border-gray-300 bg-gray-100 text-gray-700 hover:bg-gray-200',
                   'dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700',
                 )}
-                title="Copy mermaid code"
+                title={t('com_mermaid_copy_code')}
               >
-                {isCopied ? '✓ Copied' : 'Copy'}
+                {isCopied ? `✓ ${t('com_mermaid_copied')}` : t('com_mermaid_copy')}
               </button>
             </div>
           </div>
@@ -252,7 +279,7 @@ const InlineMermaidDiagram = memo(({ content, className }: InlineMermaidProps) =
           {canTryFix && (
             <div className="mt-3 rounded border border-blue-200 bg-blue-50 p-3 dark:border-blue-800 dark:bg-blue-950">
               <div className={cn('mb-2 text-sm font-medium text-blue-800 dark:text-blue-200')}>
-                {'Suggested Fix:'}
+                {t('com_mermaid_suggested_fix')}
               </div>
               <pre className="overflow-x-auto rounded border bg-white p-2 text-sm dark:bg-gray-800">
                 <code className="language-mermaid">{fixedContent}</code>
@@ -282,7 +309,7 @@ const InlineMermaidDiagram = memo(({ content, className }: InlineMermaidProps) =
             'shadow-sm',
           )}
         >
-          {'✨ Auto-fixed'}
+          ✨ {t('com_mermaid_auto_fixed')}
         </div>
       )}
 
@@ -297,7 +324,7 @@ const InlineMermaidDiagram = memo(({ content, className }: InlineMermaidProps) =
             'bg-surface-primary dark:bg-surface-primary-alt',
             'shadow-sm hover:shadow-md',
           )}
-          title="Copy mermaid code"
+          title={t('com_mermaid_copy_code')}
         >
           {isCopied ? (
             <CheckIcon className="h-4 w-4 text-green-500" />
@@ -308,8 +335,8 @@ const InlineMermaidDiagram = memo(({ content, className }: InlineMermaidProps) =
       )}
 
       <div className="p-4 text-center">
-        {!isRendered && (
-          <div className="animate-pulse text-text-secondary">Rendering diagram...</div>
+        {(isLoading || !isRendered) && (
+          <div className="animate-pulse text-text-secondary">{t('com_mermaid_rendering')}</div>
         )}
         {isRendered && svgContent && (
           <div

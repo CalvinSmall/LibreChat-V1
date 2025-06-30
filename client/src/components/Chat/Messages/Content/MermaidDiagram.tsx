@@ -12,7 +12,7 @@ interface InlineMermaidProps {
 
 const InlineMermaidDiagram = memo(({ content, className }: InlineMermaidProps) => {
   const { t } = useTranslation();
-  const [svgContent, setSvgContent] = useState<string>('');
+  const [svgBlobUrl, setSvgBlobUrl] = useState<string>('');
   const [isRendered, setIsRendered] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isCopied, setIsCopied] = useState(false);
@@ -70,6 +70,13 @@ const InlineMermaidDiagram = memo(({ content, className }: InlineMermaidProps) =
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
       timeoutRef.current = null;
+    }
+
+    // Cleanup previous blob URL
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (svgBlobUrl) {
+      URL.revokeObjectURL(svgBlobUrl);
+      setSvgBlobUrl('');
     }
 
     const cleanContent = content.trim();
@@ -183,7 +190,10 @@ const InlineMermaidDiagram = memo(({ content, className }: InlineMermaidProps) =
           });
 
           if (!isCancelled) {
-            setSvgContent(sanitizedSvg);
+            const svgBlob = new Blob([sanitizedSvg], { type: 'image/svg+xml' });
+            const blobUrl = URL.createObjectURL(svgBlob);
+            setSvgBlobUrl(blobUrl);
+
             setIsRendered(true);
             setIsLoading(false);
           }
@@ -219,8 +229,12 @@ const InlineMermaidDiagram = memo(({ content, className }: InlineMermaidProps) =
         clearTimeout(timeoutRef.current);
         timeoutRef.current = null;
       }
+      // Cleanup blob URL on unmount
+      if (svgBlobUrl) {
+        URL.revokeObjectURL(svgBlobUrl);
+      }
     };
-  }, []);
+  }, [svgBlobUrl]);
 
   if (error) {
     const fixedContent = fixCommonSyntaxIssues(content);
@@ -313,7 +327,7 @@ const InlineMermaidDiagram = memo(({ content, className }: InlineMermaidProps) =
         </div>
       )}
 
-      {isRendered && svgContent && (
+      {isRendered && svgBlobUrl && (
         <button
           onClick={handleCopy}
           className={cn(
@@ -338,11 +352,15 @@ const InlineMermaidDiagram = memo(({ content, className }: InlineMermaidProps) =
         {(isLoading || !isRendered) && (
           <div className="animate-pulse text-text-secondary">{t('com_mermaid_rendering')}</div>
         )}
-        {isRendered && svgContent && (
-          <div
-            className="mermaid-container flex justify-center"
-            dangerouslySetInnerHTML={{ __html: svgContent }}
-          />
+        {isRendered && svgBlobUrl && (
+          <div className="mermaid-container flex justify-center">
+            <img
+              src={svgBlobUrl}
+              alt={t('com_mermaid_diagram_alt')}
+              className="h-auto max-w-full"
+              style={{ maxWidth: '600px', maxHeight: '400px' }}
+            />
+          </div>
         )}
       </div>
     </div>

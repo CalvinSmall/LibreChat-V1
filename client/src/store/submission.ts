@@ -1,4 +1,4 @@
-import { atom } from 'recoil';
+import { atom } from 'jotai';
 import { TSubmission } from 'librechat-data-provider';
 
 // current submission
@@ -12,17 +12,10 @@ import { TSubmission } from 'librechat-data-provider';
 //   isRegenerate=false, // isRegenerate?
 // }
 
-const submission = atom<TSubmission | null>({
-  key: 'submission',
-  default: null,
-});
-
-const isSubmitting = atom({
-  key: 'isSubmitting',
-  default: false,
-});
+const submission = atom<TSubmission | null>(null);
+const isSubmitting = atom(false);
 
 export default {
   submission,
   isSubmitting,
-};
+} as const;

@@ -1,17 +1,11 @@
-import { atom } from 'recoil';
+import { atom } from 'jotai';
 import type { TUser, TPlugin } from 'librechat-data-provider';
+import type { Atom } from 'jotai';
 
-const user = atom<TUser | undefined>({
-  key: 'user',
-  default: undefined,
-});
-
-const availableTools = atom<Record<string, TPlugin>>({
-  key: 'availableTools',
-  default: {},
-});
+export const userAtom = atom<TUser | undefined>(undefined);
+export const availableToolsAtom = atom<Record<string, TPlugin>>({});
 
 export default {
-  user,
-  availableTools,
-};
+  user: userAtom,
+  availableTools: availableToolsAtom,
+} as const;

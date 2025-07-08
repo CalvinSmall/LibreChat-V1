@@ -93,6 +93,14 @@ class ModelEndHandler {
     }
   }
 }
+function createOmitFileSearchOutput() {
+  return function omitFileSearchOutput(name) {
+    if (name === Tools.file_search) {
+      return true;
+    }
+    return false;
+  };
+}
 
 /**
  * Get default handlers for stream events.
@@ -112,7 +120,7 @@ function getDefaultHandlers({ res, aggregateContent, toolEndCallback, collectedU
   }
   const handlers = {
     [GraphEvents.CHAT_MODEL_END]: new ModelEndHandler(collectedUsage),
-    [GraphEvents.TOOL_END]: new ToolEndHandler(toolEndCallback),
+    [GraphEvents.TOOL_END]: new ToolEndHandler(toolEndCallback, createOmitFileSearchOutput()),
     [GraphEvents.CHAT_MODEL_STREAM]: new ChatModelStreamHandler(),
     [GraphEvents.ON_RUN_STEP]: {
       /**

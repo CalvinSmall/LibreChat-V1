@@ -1,9 +1,18 @@
-import React, { useLayoutEffect, useState, memo, useContext, useMemo, useCallback } from 'react';
+import React, {
+  useLayoutEffect,
+  useState,
+  memo,
+  useContext,
+  useMemo,
+  useCallback,
+  useRef,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import DOMPurify from 'dompurify';
+import { TransformWrapper, TransformComponent, ReactZoomPanPinchRef } from 'react-zoom-pan-pinch';
 import { cn } from '~/utils';
 import { ThemeContext, isDark } from '~/hooks/ThemeContext';
-import { ClipboardIcon, CheckIcon } from 'lucide-react';
+import { ClipboardIcon, CheckIcon, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
 
 interface InlineMermaidProps {
   content: string;
@@ -12,7 +21,7 @@ interface InlineMermaidProps {
 
 const InlineMermaidDiagram = memo(({ content, className }: InlineMermaidProps) => {
   const { t } = useTranslation();
-  const [svgBlobUrl, setSvgBlobUrl] = useState<string>('');
+  const [svgContent, setSvgContent] = useState<string>('');
   const [isRendered, setIsRendered] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isCopied, setIsCopied] = useState(false);
@@ -20,6 +29,7 @@ const InlineMermaidDiagram = memo(({ content, className }: InlineMermaidProps) =
   const [isLoading, setIsLoading] = useState(false);
   const { theme } = useContext(ThemeContext);
   const isDarkMode = isDark(theme);
+  const transformRef = useRef<ReactZoomPanPinchRef>(null);
 
   const diagramKey = useMemo(
     () => `${content.trim()}-${isDarkMode ? 'dark' : 'light'}`,
@@ -35,6 +45,25 @@ const InlineMermaidDiagram = memo(({ content, className }: InlineMermaidProps) =
       console.error('Failed to copy diagram content:', err);
     }
   }, [content]);
+
+  const handleZoomIn = useCallback(() => {
+    if (transformRef.current) {
+      transformRef.current.zoomIn(0.2);
+    }
+  }, []);
+
+  const handleZoomOut = useCallback(() => {
+    if (transformRef.current) {
+      transformRef.current.zoomOut(0.2);
+    }
+  }, []);
+
+  const handleResetZoom = useCallback(() => {
+    if (transformRef.current) {
+      transformRef.current.resetTransform();
+      transformRef.current.centerView(1, 0);
+    }
+  }, []);
 
   // Memoized to prevent re-renders when content/theme changes
   const fixCommonSyntaxIssues = useMemo(() => {
@@ -72,12 +101,8 @@ const InlineMermaidDiagram = memo(({ content, className }: InlineMermaidProps) =
       timeoutRef.current = null;
     }
 
-    // Cleanup previous blob URL
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    if (svgBlobUrl) {
-      URL.revokeObjectURL(svgBlobUrl);
-      setSvgBlobUrl('');
-    }
+    // Clear previous SVG content
+    setSvgContent('');
 
     const cleanContent = content.trim();
 
@@ -175,9 +200,10 @@ const InlineMermaidDiagram = memo(({ content, className }: InlineMermaidProps) =
         if (result && result.svg) {
           let processedSvg = result.svg;
 
+          // Enhance SVG for better zoom/pan interaction
           processedSvg = processedSvg.replace(
             '<svg',
-            '<svg style="max-width: 600px; width: 100%; height: auto; max-height: 400px;" preserveAspectRatio="xMidYMid meet"',
+            '<svg style="width: 100%; height: auto;" preserveAspectRatio="xMidYMid meet"',
           );
 
           // Sanitize SVG content to prevent XSS attacks
@@ -190,10 +216,7 @@ const InlineMermaidDiagram = memo(({ content, className }: InlineMermaidProps) =
           });
 
           if (!isCancelled) {
-            const svgBlob = new Blob([sanitizedSvg], { type: 'image/svg+xml' });
-            const blobUrl = URL.createObjectURL(svgBlob);
-            setSvgBlobUrl(blobUrl);
-
+            setSvgContent(sanitizedSvg);
             setIsRendered(true);
             setIsLoading(false);
           }
@@ -229,12 +252,8 @@ const InlineMermaidDiagram = memo(({ content, className }: InlineMermaidProps) =
         clearTimeout(timeoutRef.current);
         timeoutRef.current = null;
       }
-      // Cleanup blob URL on unmount
-      if (svgBlobUrl) {
-        URL.revokeObjectURL(svgBlobUrl);
-      }
     };
-  }, [svgBlobUrl]);
+  }, []);
 
   if (error) {
     const fixedContent = fixCommonSyntaxIssues(content);
@@ -327,40 +346,104 @@ const InlineMermaidDiagram = memo(({ content, className }: InlineMermaidProps) =
         </div>
       )}
 
-      {isRendered && svgBlobUrl && (
-        <button
-          onClick={handleCopy}
-          className={cn(
-            'absolute right-2 top-2 z-10 rounded-md p-2 transition-all duration-200',
-            'hover:bg-surface-hover active:bg-surface-active',
-            'text-text-secondary hover:text-text-primary',
-            'border border-border-light dark:border-border-heavy',
-            'bg-surface-primary dark:bg-surface-primary-alt',
-            'shadow-sm hover:shadow-md',
-          )}
-          title={t('com_mermaid_copy_code')}
-        >
-          {isCopied ? (
-            <CheckIcon className="h-4 w-4 text-green-500" />
-          ) : (
-            <ClipboardIcon className="h-4 w-4" />
-          )}
-        </button>
+      {isRendered && svgContent && (
+        <div className="absolute right-2 top-2 z-10 flex gap-1">
+          <button
+            onClick={handleZoomIn}
+            className={cn(
+              'rounded-md p-2 transition-all duration-200',
+              'hover:bg-surface-hover active:bg-surface-active',
+              'text-text-secondary hover:text-text-primary',
+              'border border-border-light dark:border-border-heavy',
+              'bg-surface-primary dark:bg-surface-primary-alt',
+              'shadow-sm hover:shadow-md',
+            )}
+            title={t('com_mermaid_zoom_in')}
+          >
+            <ZoomIn className="h-4 w-4" />
+          </button>
+          <button
+            onClick={handleZoomOut}
+            className={cn(
+              'rounded-md p-2 transition-all duration-200',
+              'hover:bg-surface-hover active:bg-surface-active',
+              'text-text-secondary hover:text-text-primary',
+              'border border-border-light dark:border-border-heavy',
+              'bg-surface-primary dark:bg-surface-primary-alt',
+              'shadow-sm hover:shadow-md',
+            )}
+            title={t('com_mermaid_zoom_out')}
+          >
+            <ZoomOut className="h-4 w-4" />
+          </button>
+          <button
+            onClick={handleResetZoom}
+            className={cn(
+              'rounded-md p-2 transition-all duration-200',
+              'hover:bg-surface-hover active:bg-surface-active',
+              'text-text-secondary hover:text-text-primary',
+              'border border-border-light dark:border-border-heavy',
+              'bg-surface-primary dark:bg-surface-primary-alt',
+              'shadow-sm hover:shadow-md',
+            )}
+            title={t('com_mermaid_reset_zoom')}
+          >
+            <RotateCcw className="h-4 w-4" />
+          </button>
+          <button
+            onClick={handleCopy}
+            className={cn(
+              'rounded-md p-2 transition-all duration-200',
+              'hover:bg-surface-hover active:bg-surface-active',
+              'text-text-secondary hover:text-text-primary',
+              'border border-border-light dark:border-border-heavy',
+              'bg-surface-primary dark:bg-surface-primary-alt',
+              'shadow-sm hover:shadow-md',
+            )}
+            title={t('com_mermaid_copy_code')}
+          >
+            {isCopied ? (
+              <CheckIcon className="h-4 w-4 text-green-500" />
+            ) : (
+              <ClipboardIcon className="h-4 w-4" />
+            )}
+          </button>
+        </div>
       )}
 
-      <div className="p-4 text-center">
+      <div className="p-4">
         {(isLoading || !isRendered) && (
-          <div className="animate-pulse text-text-secondary">{t('com_mermaid_rendering')}</div>
-        )}
-        {isRendered && svgBlobUrl && (
-          <div className="mermaid-container flex justify-center">
-            <img
-              src={svgBlobUrl}
-              alt={t('com_mermaid_diagram_alt')}
-              className="h-auto max-w-full"
-              style={{ maxWidth: '600px', maxHeight: '400px' }}
-            />
+          <div className="animate-pulse text-center text-text-secondary">
+            {t('com_mermaid_rendering')}
           </div>
+        )}
+        {isRendered && svgContent && (
+          <TransformWrapper
+            ref={transformRef}
+            initialScale={1}
+            minScale={0.1}
+            maxScale={4}
+            limitToBounds={false}
+            centerOnInit={true}
+            wheel={{ step: 0.1 }}
+            panning={{ velocityDisabled: true }}
+            alignmentAnimation={{ disabled: true }}
+          >
+            <TransformComponent
+              wrapperStyle={{
+                width: '100%',
+                height: 'auto',
+                minHeight: '200px',
+                maxHeight: '600px',
+                overflow: 'hidden',
+              }}
+            >
+              <div
+                className="mermaid-container flex min-h-[200px] items-center justify-center"
+                dangerouslySetInnerHTML={{ __html: svgContent }}
+              />
+            </TransformComponent>
+          </TransformWrapper>
         )}
       </div>
     </div>
